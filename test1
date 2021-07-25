@@ -1,0 +1,90 @@
+from __future__ import unicode_literals
+import socket
+import threading
+import logging
+import logging.config
+
+import openpyxl
+import colorama
+from colorama import Fore, Style
+
+colorama.init(autoreset=True)
+BLUE = lambda text: '{}{}{}'.format(Style.BRIGHT, Fore.BLUE, text)
+GREEN = lambda text: '{}{}{}'.format(Style.BRIGHT, Fore.GREEN, text)
+RED = lambda text: '{}{}{}'.format(Style.BRIGHT, Fore.RED, text)
+YELLOW = lambda text: '{}{}{}'.format(Style.BRIGHT, Fore.YELLOW, text)
+
+logging.config.dictConfig({
+    'version': 1,
+    'disable_existing_loggers': True,   # chỉ lấy log trong main, bỏ qua các loại log chỗ #
+})
+
+logging.basicConfig(level=logging.INFO,
+                    handlers=[logging.FileHandler('Log_MCC.txt', 'a+', 'utf-8')],
+                    format='[%(asctime)s]:%(message)s')
+                                       
+lock = threading.Lock()
+
+def check(branch, ip1, ip2, port):
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.settimeout(4)
+        result_ip1 = sock.connect_ex((ip1, port))
+        if result_ip1 == 0:
+            check_ip1 = GREEN(ip1)
+        else:
+            check_ip1 = RED(ip1)
+          #  logging.info('{:<40}: {:<15} -> Fail'.format(branch, ip1))
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.settimeout(3)
+        if ip2:
+            result_ip2 = sock.connect_ex((ip2, port))
+                
+            if result_ip2 == 0:
+                check_ip2 = GREEN(ip2)
+            else:
+                check_ip2 = RED(ip2)
+             #   logging.info('{:<40}: {:<15} -> Fail'.format(branch, ip2))
+        else:
+                check_ip2 = YELLOW('-------------')
+                
+        if check_ip1 == RED(ip1) and check_ip2 == RED(ip2):
+            Result = RED('Fail')
+            logging.info('{:<25}: {:<15}: {:<15} -> Fail'.format(branch, ip1, ip2))
+        elif check_ip1 == RED(ip1) and check_ip2 == YELLOW('-------------'):
+            Result = RED('Fail')
+            logging.info('{:<25}: {:<15} -> Fail'.format(branch, ip1, ip2))
+        elif check_ip1 == YELLOW('-------------') and check_ip2 == RED(ip2):
+            Result = RED('Fail')
+            logging.info('{:<40}: {:<15}: {:<15} -> Fail'.format(branch, ip1, ip2))
+        else:
+            Result = GREEN(' OK ')
+    lock.acquire()
+    print('{:<30} | {:<25} | {:<25} | {:<6}| {:<5}'.format(branch, check_ip1, check_ip2, port, Result))
+    lock.release()
+
+
+if __name__ == '__main__':
+    logging.info('------- IP Error -------')
+    EXCEL_PATH = './ip.xlsx'
+    wb = openpyxl.load_workbook(EXCEL_PATH, data_only=True) # chỉ load value thay vì công thức
+    ip_sheet = wb['Sheet1']
+    maxRow = ip_sheet.max_row
+    print(YELLOW("""
+Check open port v1.0
+
+    \n"""))
+    print('{:<30} | {:<16} | {:<16} | {:<6}| {:<6}'.format('Branch', 'IP 1', 'IP2', 'PORT', 'RESULT'))
+    print('--'*43)
+    for row in range(2, maxRow+1):
+        branch =    ip_sheet['A'+str(row)].value
+        ip1 =       ip_sheet['B'+str(row)].value
+        if ip1:
+            ip1 = ip1.strip()
+        ip2 =       ip_sheet['C'+str(row)].value
+        if ip2:
+            ip2 = ip2.strip()
+        port =       ip_sheet['D'+str(row)].value
+
+        t = threading.Thread(target=check, args=(branch,ip1,ip2,port))
+        t.start()
